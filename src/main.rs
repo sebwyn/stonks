@@ -1,59 +1,24 @@
-use std::f32::consts::PI;
-
-use bevy::color::palettes::css::{GREY, LIGHT_GREY, PURPLE, WHITE};
+use bevy::color::palettes::css::{GREY, WHITE};
 use bevy::prelude::*;
 
-use bevy::render::camera;
-use bevy::render::render_resource::{AsBindGroup, ShaderRef};
-use bevy::sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle, Mesh2dHandle};
+use bevy::sprite::Mesh2dHandle;
 use bevy::window::PrimaryWindow;
 use bevy::{app::App, DefaultPlugins};
-use bevy_infinite_grid::{InfiniteGrid, InfiniteGridBundle, InfiniteGridPlugin};
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, InfiniteGridPlugin))
+        .add_plugins((DefaultPlugins))
         .insert_resource(UserCommands::default())
-        .add_systems(Startup, create_graph)
+        .add_systems(Startup, setup)
         .add_systems(Update, pan)
-        .add_systems(PostUpdate, update_grid)
-        // .add_systems(Update, update_grid)
+        .add_systems(Update, draw_grid)
         .run();
-}
-
-#[derive(Resource, Default)]
-struct UserCommands {
-    pan_state: Option<(Vec2, Vec3)>
 }
 
 #[derive(Component)]
 struct MainCamera;
 
-#[derive(Component)]
-struct Grid {
-    minor_line_frequency: f32,
-    minor_line_width_px: i32,
-
-    minor_line_bundle: Option<ColorMesh2dBundle>,
-    axis_line_bundle: Option<ColorMesh2dBundle>
-}
-
-
-impl Default for Grid {
-    fn default() -> Self {
-        Self { 
-            minor_line_frequency: 50.0, 
-            minor_line_width_px: 5,
-            minor_line_bundle: None,
-            axis_line_bundle: None
-        }
-    }
-}
-
-#[derive(Component)]
-struct GridLine;
-
-fn create_graph(
+fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -92,6 +57,11 @@ fn create_graph(
     });
 }
 
+#[derive(Resource, Default)]
+struct UserCommands {
+    pan_state: Option<(Vec2, Vec3)>
+}
+
 fn pan(
     buttons: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window, With<PrimaryWindow>>, 
@@ -117,7 +87,30 @@ fn pan(
     }
 }
 
-fn update_grid(
+#[derive(Component)]
+struct Grid {
+    minor_line_frequency: f32,
+    minor_line_width_px: i32,
+
+    minor_line_bundle: Option<ColorMesh2dBundle>,
+    axis_line_bundle: Option<ColorMesh2dBundle>
+}
+
+impl Default for Grid {
+    fn default() -> Self {
+        Self { 
+            minor_line_frequency: 50.0, 
+            minor_line_width_px: 5,
+            minor_line_bundle: None,
+            axis_line_bundle: None
+        }
+    }
+}
+
+#[derive(Component)]
+struct GridLine;
+
+fn draw_grid(
     mut commands: Commands,
     grid_spec: Query<&Grid>,
     grid_lines: Query<Entity, With<GridLine>>,
