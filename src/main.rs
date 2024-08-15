@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use bevy::color::palettes::css::{PURPLE, WHITE};
+use bevy::color::palettes::css::{GREY, LIGHT_GREY, PURPLE, WHITE};
 use bevy::prelude::*;
 
 use bevy::render::camera;
@@ -33,12 +33,20 @@ struct MainCamera;
 struct Grid {
     minor_line_frequency: f32,
     minor_line_width_px: i32,
+
+    minor_line_bundle: Option<ColorMesh2dBundle>,
+    axis_line_bundle: Option<ColorMesh2dBundle>
 }
 
 
 impl Default for Grid {
     fn default() -> Self {
-        Self { minor_line_frequency: 50.0, minor_line_width_px: 5  }
+        Self { 
+            minor_line_frequency: 50.0, 
+            minor_line_width_px: 5,
+            minor_line_bundle: None,
+            axis_line_bundle: None
+        }
     }
 }
 
@@ -60,14 +68,28 @@ fn create_graph(
     
     let rectangle_mesh: Mesh2dHandle = meshes.add(Rectangle::default()).into();
 
-    commands.spawn((ColorMesh2dBundle {
-        mesh: rectangle_mesh.clone(),
-        material: materials.add(Color::from(PURPLE)),
-        transform: Transform::default().with_scale(Vec3::new(10., 600., 1.)),
+    commands.spawn(Grid {
+        minor_line_bundle: Some(ColorMesh2dBundle {
+            mesh: rectangle_mesh.clone(),
+            material: materials.add(Color::from(GREY)),
+            ..Default::default()
+        }),
+        axis_line_bundle: Some(ColorMesh2dBundle {
+            mesh: rectangle_mesh.clone(),
+            material: materials.add(Color::from(WHITE)),
+            ..Default::default()
+        }),
+        minor_line_width_px: 2,
+        minor_line_frequency: 100.0,
         ..Default::default()
-    }, GridLine));
+    });
 
-    commands.spawn(Grid::default());
+    commands.spawn(ColorMesh2dBundle {
+        mesh: rectangle_mesh.clone(),
+        material: materials.add(Color::from(WHITE)),
+        transform: Transform::default().with_translation(Vec3::new(0.0, 0.0, 1.0)).with_scale(Vec3::new(2.0, 360.0, 1.0)),
+        ..Default::default()
+    });
 }
 
 fn pan(
@@ -105,47 +127,48 @@ fn update_grid(
         commands.entity(grid_line_entity).despawn();
     }
 
-
-    let (camera_transform, camera_projection) = projection_query.single();
-
-    let center_x =  camera_transform.translation.x;
-    let center_y = camera_transform.translation.y;
-    let half_viewed_width = camera_projection.area.width() / 2.0;
-    let half_viewed_height = camera_projection.area.height() / 2.0;
-
-
-    let left = center_x - half_viewed_width;
-    let right = center_x + half_viewed_width;
-
-    let bottom = center_y - half_viewed_height;
-    let top = center_y + half_viewed_height;
-
     let grid_spec = grid_spec.single();
-
-    let starting_horizontal_line_index = (left / grid_spec.minor_line_frequency).ceil() as i32;
-    let ending_horizontal_line_index = (right / grid_spec.minor_line_frequency).floor() as i32;
+    let (camera_transform, camera_projection) = projection_query.single();
 
     let px_to_data = |px: i32| px as f32 / camera_projection.scale;
 
-    for i in starting_horizontal_line_index..=ending_horizontal_line_index {
-        let x1 = i as f32 * grid_spec.minor_line_frequency - px_to_data(grid_spec.minor_line_width_px);
-        let y1 = bottom;
-        
-        let x2 = i as f32 * grid_spec.minor_line_frequency + px_to_data(grid_spec.minor_line_width_px);
-        let y2 = top;
-        
-        let width = x2 - x1;
-        let height = y2 - y1;
+    let starting_vertical_line_index = ((camera_transform.translation.x - camera_projection.area.width()/2.0) / grid_spec.minor_line_frequency).ceil() as i32;
+    let ending_vertical_line_index = ((camera_transform.translation.x + camera_projection.area.width()/2.0) / grid_spec.minor_line_frequency).floor() as i32;
 
-        // commands.spawn(ColorMesh2dBundle { 
-        //     mesh: Rectangle,
-        //     material: ColorMaterial::from_color(WHITE),
-        //     transform: todo!(),
-        //     global_transform: todo!(),
-        //     visibility: todo!(),
-        //     inherited_visibility: todo!(),
-        //     view_visibility: todo!() 
-        // });
+    for i in starting_vertical_line_index..=ending_vertical_line_index {
+        let center_rect_x = i as f32 * grid_spec.minor_line_frequency;
+        let width = px_to_data(grid_spec.minor_line_width_px);
+        
+        let mut line = 
+            if i == 0 { grid_spec.axis_line_bundle.as_ref() } else { grid_spec.minor_line_bundle.as_ref() }
+                .expect("Must specify a 'axis_line_bundle' and 'minor_line_bundle' when using a grid!")
+                .clone();
+
+        line.transform = Transform::default()
+            .with_translation(Vec3::new(center_rect_x, camera_transform.translation.y, 0.0))
+            .with_scale(Vec3::new(width, camera_projection.area.height(), 1.0));
+
+        commands.spawn((line, GridLine));
+    }
+
+    let starting_horizontal_line_index = ((camera_transform.translation.y - camera_projection.area.height()/2.0) / grid_spec.minor_line_frequency).ceil() as i32;
+    let ending_horizontal_line_index = ((camera_transform.translation.y + camera_projection.area.height()/2.0) / grid_spec.minor_line_frequency).floor() as i32;
+
+    for i in starting_horizontal_line_index..=ending_horizontal_line_index {
+        let center_rect_y = i as f32 * grid_spec.minor_line_frequency;
+        let height = px_to_data(grid_spec.minor_line_width_px);
+        
+        let mut line = 
+            if i == 0 { grid_spec.axis_line_bundle.as_ref() } else { grid_spec.minor_line_bundle.as_ref() }
+                .expect("Must specify a 'axis_line_bundle' and 'minor_line_bundle' when using a grid!")
+                .clone();
+        
+
+        line.transform = Transform::default()
+            .with_translation(Vec3::new(camera_transform.translation.x, center_rect_y, 0.0))
+            .with_scale(Vec3::new(camera_projection.area.width(), height, 1.0));
+
+        commands.spawn((line, GridLine));
     }
 
 }
