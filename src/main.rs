@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bevy::{app::{App, Startup}, color::palettes::css::GREEN, prelude::*, DefaultPlugins};
+use bevy::{app::{App, Startup}, prelude::*, DefaultPlugins};
 use chrono::NaiveDate;
 use data_viewer::{DataViewerPlugin, PlotColor, Timeseries, TimeseriesDataRepository};
 use polars::prelude::*;
