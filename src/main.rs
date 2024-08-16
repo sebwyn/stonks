@@ -2,7 +2,7 @@ use std::path::Path;
 
 use bevy::{app::{App, Startup}, color::palettes::css::GREEN, prelude::*, DefaultPlugins};
 use chrono::NaiveDate;
-use data_viewer::{DataViewerPlugin, Timeseries, TimeseriesDataRepository};
+use data_viewer::{DataViewerPlugin, PlotColor, Timeseries, TimeseriesDataRepository};
 use polars::prelude::*;
 
 mod data_viewer;
@@ -16,8 +16,6 @@ fn main() {
 
 fn setup(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut color_materials: ResMut<Assets<ColorMaterial>>,
     mut timeseries_data_repository: ResMut<TimeseriesDataRepository>
 ) {
     let lf = LazyCsvReader::new(Path::new("assets/datasets/co-emissions-per-capita.csv"))
@@ -51,12 +49,7 @@ fn setup(
 
     commands.spawn(Timeseries {
         data_key: "united_states_emissions".to_string(),
-        line_bundle: ColorMesh2dBundle {
-            mesh: meshes.add(Rectangle::default()).into(),
-            material: color_materials.add(Color::from(GREEN)),
-            ..Default::default()
-        },
-        
+        line_color: PlotColor::Green,
     });
 }
 
