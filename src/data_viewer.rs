@@ -1,18 +1,65 @@
+use std::collections::HashMap;
+
 use bevy::app::Plugin;
 use bevy::color::palettes::css::{GREY, WHITE};
 use bevy::prelude::*;
 
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PrimaryWindow;
+use chrono::NaiveDate;
 
 pub struct DataViewerPlugin;
 
 impl Plugin for DataViewerPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(UserCommands::default());
+        app.insert_resource(TimeseriesDataRepository::default());
         app.add_systems(Startup, setup);
+        app.add_systems(Update, plot_timeseries);
         app.add_systems(Update, pan);
         app.add_systems(Update, draw_grid);
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct TimeseriesDataRepository {
+    pub keyed_datasets: HashMap<String, Vec<(NaiveDate, f64)>>
+}
+
+#[derive(Component)]
+pub struct Timeseries {
+    pub data_key: String,
+    pub(crate) line_bundle: ColorMesh2dBundle
+}
+
+fn plot_timeseries(
+    mut commands: Commands,
+    camera_projection: Query<&OrthographicProjection, With<MainCamera>>,
+    timeseries_data_repository: Res<TimeseriesDataRepository>,
+    timeseries_query: Query<&Timeseries, Added<Timeseries>>
+) {
+    let map_time_to_x_axis = |time: NaiveDate| {
+        (time - NaiveDate::from_yo_opt(2000, 1).unwrap()).num_days() as f32 / (365.0 / 2.0)
+    };
+    let px_to_data = |px: i32| px as f32 / camera_projection.single().scale;
+    let data_rect_size = px_to_data(5);
+
+    for timeseries in timeseries_query.into_iter() {
+        let data = timeseries_data_repository.keyed_datasets.get(&timeseries.data_key)
+            .unwrap_or_else(|| panic!("Could not find dataset {} for timeseries", timeseries.data_key));
+
+        
+        let data_meshes = data.iter().map(|data_point| {
+            let mut data_point_mesh = timeseries.line_bundle.clone();
+            data_point_mesh.transform = Transform::default()
+                .with_translation(Vec3::new(map_time_to_x_axis(data_point.0), data_point.1 as f32 * 8.0, 1.0))
+                .with_scale(Vec3::splat(data_rect_size));
+            
+            data_point_mesh
+        })
+        .collect::<Vec<_>>();
+            
+        commands.spawn_batch(data_meshes)
     }
 }
 
@@ -24,6 +71,14 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let rectangle_mesh: Mesh2dHandle = meshes.add(Rectangle::default()).into();
+
+    let mut rect_from_color = |color| ColorMesh2dBundle {
+        mesh: rectangle_mesh.clone(),
+        material: materials.add(Color::from(color)),
+        ..Default::default()
+    };
+
     commands.spawn((Camera2dBundle {
         camera: Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
@@ -32,31 +87,16 @@ fn setup(
         ..Default::default()
     }, MainCamera));
     
-    let rectangle_mesh: Mesh2dHandle = meshes.add(Rectangle::default()).into();
 
     commands.spawn(Grid {
-        minor_line_bundle: Some(ColorMesh2dBundle {
-            mesh: rectangle_mesh.clone(),
-            material: materials.add(Color::from(GREY)),
-            ..Default::default()
-        }),
-        axis_line_bundle: Some(ColorMesh2dBundle {
-            mesh: rectangle_mesh.clone(),
-            material: materials.add(Color::from(WHITE)),
-            ..Default::default()
-        }),
+        minor_line_bundle: rect_from_color(GREY),
+        x_axis_line_bundle: rect_from_color(WHITE),
+        y_axis_line_bundle: rect_from_color(GREY),
         minor_line_width_px: 2,
-        minor_line_frequency: 100.0,
-        ..Default::default()
-    });
-
-    commands.spawn(ColorMesh2dBundle {
-        mesh: rectangle_mesh.clone(),
-        material: materials.add(Color::from(WHITE)),
-        transform: Transform::default().with_translation(Vec3::new(0.0, 0.0, 1.0)).with_scale(Vec3::new(2.0, 360.0, 1.0)),
-        ..Default::default()
+        minor_line_frequency: 100.0
     });
 }
+
 
 #[derive(Resource, Default)]
 struct UserCommands {
@@ -93,19 +133,9 @@ struct Grid {
     minor_line_frequency: f32,
     minor_line_width_px: i32,
 
-    minor_line_bundle: Option<ColorMesh2dBundle>,
-    axis_line_bundle: Option<ColorMesh2dBundle>
-}
-
-impl Default for Grid {
-    fn default() -> Self {
-        Self { 
-            minor_line_frequency: 50.0, 
-            minor_line_width_px: 5,
-            minor_line_bundle: None,
-            axis_line_bundle: None
-        }
-    }
+    minor_line_bundle: ColorMesh2dBundle,
+    x_axis_line_bundle: ColorMesh2dBundle,
+    y_axis_line_bundle: ColorMesh2dBundle
 }
 
 #[derive(Component)]
@@ -134,8 +164,7 @@ fn draw_grid(
         let width = px_to_data(grid_spec.minor_line_width_px);
         
         let mut line = 
-            if i == 0 { grid_spec.axis_line_bundle.as_ref() } else { grid_spec.minor_line_bundle.as_ref() }
-                .expect("Must specify a 'axis_line_bundle' and 'minor_line_bundle' when using a grid!")
+            if i == 0 { &grid_spec.y_axis_line_bundle } else { &grid_spec.minor_line_bundle }
                 .clone();
 
         line.transform = Transform::default()
@@ -153,10 +182,8 @@ fn draw_grid(
         let height = px_to_data(grid_spec.minor_line_width_px);
         
         let mut line = 
-            if i == 0 { grid_spec.axis_line_bundle.as_ref() } else { grid_spec.minor_line_bundle.as_ref() }
-                .expect("Must specify a 'axis_line_bundle' and 'minor_line_bundle' when using a grid!")
+            if i == 0 { &grid_spec.x_axis_line_bundle } else { &grid_spec.minor_line_bundle }
                 .clone();
-        
 
         line.transform = Transform::default()
             .with_translation(Vec3::new(camera_transform.translation.x, center_rect_y, 0.0))
